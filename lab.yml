@@ -1,0 +1,114 @@
+---
+- name: Set up a fresh synapse
+  hosts: lab
+  vars:
+    ### vvv DANGER ZONE DONT RUN IN PRODUCTION DONT STORE IN A GIT REPO vvv
+    letsencrypt_email: "youremail@example.com"
+    synapse_pg_password: "REPLACEME with a proper passphrase"
+    matrix_server_name: "example.com"
+    synapse_registration_shared_secret: "REPLACEME with what synapse generated in the homeserver.yaml"
+    synapse_macaroon_secret_key: "REPLACEME with what synapse generated in the homeserver.yaml"
+    synapse_form_secret: "REPLACEME with what synapse generated in the homeserver.yaml"
+    synapse_signing_key: "REPLACEME with the content of yourdomain.signin.key"
+    ### ^^^ DANGER ZONE DONT RUN IN PRODUCTION DONT STORE IN A GIT REPO ^^^
+  become: true
+  become_method: su
+
+  tasks:
+    - name: Install repo dependencies (ca-certificates)
+      ansible.builtin.apt:
+        name: ca-certificates
+        state: present
+
+    - name: Install repo dependencies (gnupg)
+      ansible.builtin.apt:
+        name: gnupg
+        state: present
+
+    - name: Add docker signing key
+      ansible.builtin.apt_key:
+        url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+        state: present
+
+    - name: Add repository into sources list
+      ansible.builtin.apt_repository:
+        repo: "deb [arch={{ ansible_architecture }}] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+        state: present
+        filename: docker
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker
+          - docker.io
+          - docker-compose
+        state: present
+        update_cache: true
+
+    - name: Create traefik certs volume
+      community.docker.docker_volume:
+        name: traefik_certs
+        state: present
+
+    - name: Create nginx conf volume
+      community.docker.docker_volume:
+        name: nginx_conf
+        state: present
+
+    - name: Create synapse data volume
+      community.docker.docker_volume:
+        name: synapse_data
+        state: present
+
+    - name: Make the synapse volume belong to 991
+      ansible.builtin.file:
+        path: "/var/lib/docker/volumes/synapse_data/_data"
+        owner: 991
+        group: 991
+
+    - name: Create synapse db data volume
+      community.docker.docker_volume:
+        name: synapse_db_data
+        state: present
+
+    - name: Copy the synapse homeserver.yaml file
+      ansible.builtin.template:
+        src: "homeserver.yaml.j2"
+        dest: "/var/lib/docker/volumes/synapse_data/_data/homeserver.yaml"
+        owner: 991
+        group: 991
+        mode: "660"
+
+    - name: Copy the synapse log config file
+      ansible.builtin.template:
+        src: "log.config.j2"
+        dest: "/var/lib/docker/volumes/synapse_data/_data/{{ matrix_server_name }}.log.config"
+        owner: 991
+        group: 991
+        mode: "660"
+
+    - name: Copy the signing key
+      ansible.builtin.template:
+        src: "signing.key.j2"
+        dest: "/var/lib/docker/volumes/synapse_data/_data/{{ matrix_server_name }}.signing.key"
+        owner: 991
+        group: 991
+        mode: "660"
+
+    - name: Copy the well-known files in the nginx config
+      ansible.builtin.template:
+        src: "nginx-default.conf.j2"
+        dest: "/var/lib/docker/volumes/nginx_conf/_data/default.conf"
+        mode: "644"
+
+    - name: Create the docker compose directory
+      ansible.builtin.file:
+        path: /root/infra
+        state: directory
+        mode: "700"
+
+    - name: Copy the docker-compose file
+      ansible.builtin.template:
+        src: "docker-compose.yaml.j2"
+        dest: /root/infra/docker-compose.yaml
+        mode: "700"

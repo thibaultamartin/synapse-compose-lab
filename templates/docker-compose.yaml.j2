@@ -1,0 +1,75 @@
+version: '3'
+
+services:
+
+  traefik:
+    container_name: traefik
+    image: "traefik"
+    restart: "always"
+    command:
+      - "--api=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letls.acme.email={{ letsencrypt_email }}"
+      - "--certificatesresolvers.letls.acme.storage=/certs/acme.json"
+      - "--certificatesresolvers.letls.acme.httpchallenge=true"
+      - "--certificatesresolvers.letls.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik_certs:/certs"
+
+  nginx:
+    container_name: nginx
+    image: "nginx:1.22.0"
+    restart: "always"
+    volumes:
+      - nginx_conf:/etc/nginx/conf.d
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nginx.entrypoints=websecure"
+      - "traefik.http.routers.nginx.rule=Host(`{{ matrix_server_name }}`)"
+      - "traefik.http.routers.nginx.tls=true"
+      - "traefik.http.routers.nginx.tls.certresolver=letls"
+
+  synapse:
+    container_name: synapse
+    image: docker.io/matrixdotorg/synapse:v1.93.0
+    restart: unless-stopped
+    environment:
+      - SYNAPSE_CONFIG_PATH=/data/homeserver.yaml
+    volumes:
+      - synapse_data:/data
+    depends_on:
+      - synapse-db
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.synapse.entrypoints=websecure
+      - traefik.http.routers.synapse.rule=Host(`matrix.{{ matrix_server_name }}`)
+      - traefik.http.routers.synapse.tls=true
+      - traefik.http.routers.synapse.tls.certresolver=letls
+
+  synapse-db:
+    container_name: synapse-db
+    image: docker.io/postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=synapse
+      - POSTGRES_PASSWORD={{ synapse_pg_password }}
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=C --lc-ctype=C
+    volumes:
+      - synapse_db_data:/var/lib/postgresql/data
+
+volumes:
+  traefik_certs:
+    external: true
+  nginx_conf:
+    external: true
+  synapse_data:
+    external: true
+  synapse_db_data:
+    external: true

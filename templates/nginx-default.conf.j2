@@ -1,0 +1,31 @@
+server {
+    listen       80;
+    listen  [::]:80;
+    server_name  {{ matrix_server_name }};
+
+    location / {
+      root /var/www/landing_page;
+    }
+
+    location /.well-known/matrix/server {
+        access_log off;
+        add_header Access-Control-Allow-Origin *;
+        default_type application/json;
+        return 200 '{"m.server": "matrix.{{ matrix_server_name }}:443"}';
+    }
+
+    location /.well-known/matrix/client {
+        access_log off;
+        add_header Access-Control-Allow-Origin *;
+        default_type application/json;
+        return 200 '{"m.homeserver": {"base_url": "https://matrix.{{ matrix_server_name }}"}}';
+    }
+
+
+    # redirect server error pages to the static page /50x.html
+    #
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+}

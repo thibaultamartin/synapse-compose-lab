@@ -1,0 +1,32 @@
+server_name: "{{ matrix_server_name }}"
+pid_file: /data/homeserver.pid
+public_baseurl: "https://matrix.{{ matrix_server_name }}"
+
+listeners:
+  - port: 8008
+    tls: false
+    type: http
+    x_forwarded: true
+    resources:
+      - names: [client, federation]
+        compress: false
+
+database:
+  name: psycopg2
+  args:
+    user: synapse
+    password: {{ synapse_pg_password }}
+    database: synapse
+    host: synapse-db
+    cp_min: 5
+    cp_max: 10
+
+log_config: "/data/{{ matrix_server_name }}.log.config"
+media_store_path: /data/media_store
+registration_shared_secret: "{{ synapse_registration_shared_secret }}"
+report_stats: true
+macaroon_secret_key: "{{ synapse_macaroon_secret_key }}"
+form_secret: "{{ synapse_form_secret }}"
+signing_key_path: "/data/{{ matrix_server_name }}.signing.key"
+trusted_key_servers:
+  - server_name: "matrix.org"
